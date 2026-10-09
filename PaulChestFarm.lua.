@@ -1,0 +1,251 @@
+-- PAUL CHEST FARM
+-- Fireworks Playground
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+
+local MARKER = "Ö"
+local running = false
+local closed = false
+local attempted = {}
+
+-- Interfaz compacta
+local gui = Instance.new("ScreenGui")
+gui.Name = "PaulChestFarm"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local window = Instance.new("Frame")
+window.Size = UDim2.fromOffset(190, 170)
+window.Position = UDim2.new(1, -200, 0.35, 0)
+window.BackgroundColor3 = Color3.fromRGB(20, 22, 32)
+window.BorderSizePixel = 0
+window.Parent = gui
+
+Instance.new("UICorner", window).CornerRadius =
+    UDim.new(0, 10)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundTransparency = 1
+title.Text = "PAUL CHEST FARM"
+title.TextColor3 = Color3.fromRGB(0, 220, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 12
+title.Parent = window
+
+local status = Instance.new("TextLabel")
+status.Position = UDim2.fromOffset(5, 29)
+status.Size = UDim2.new(1, -10, 0, 20)
+status.BackgroundTransparency = 1
+status.Text = "Listo"
+status.TextColor3 = Color3.new(1, 1, 1)
+status.Font = Enum.Font.Gotham
+status.TextSize = 10
+status.Parent = window
+
+local function makeButton(text, y, color)
+    local b = Instance.new("TextButton")
+    b.Position = UDim2.fromOffset(8, y)
+    b.Size = UDim2.new(1, -16, 0, 30)
+    b.BackgroundColor3 = color
+    b.Text = text
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 10
+    b.Parent = window
+    Instance.new("UICorner", b).CornerRadius =
+        UDim.new(0, 6)
+    return b
+end
+
+local startBtn = makeButton(
+    "AUTO FARM: ON", 53,
+    Color3.fromRGB(20, 130, 90)
+)
+
+local stopBtn = makeButton(
+    "STOP", 88,
+    Color3.fromRGB(150, 40, 50)
+)
+
+local closeBtn = makeButton(
+    "CERRAR", 123,
+    Color3.fromRGB(60, 65, 80)
+)
+
+-- Reducir duración local de los prompts
+local function instantPrompt(obj)
+    if obj:IsA("ProximityPrompt") then
+        pcall(function()
+            obj.HoldDuration = 0
+        end)
+    end
+end
+
+for _, obj in ipairs(workspace:GetDescendants()) do
+    instantPrompt(obj)
+end
+
+workspace.DescendantAdded:Connect(instantPrompt)
+
+-- Buscar cofres
+local function findChests()
+    local found = {}
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model")
+        and string.find(obj.Name, MARKER, 1, true)
+        and not attempted[obj] then
+
+            local prompt = obj:FindFirstChildWhichIsA(
+                "ProximityPrompt", true
+            )
+
+            if prompt and prompt.Enabled then
+                table.insert(found, {
+                    model = obj,
+                    prompt = prompt
+                })
+            end
+        end
+    end
+
+    return found
+end
+
+-- Interactuar con un cofre
+local function collectChest(item)
+    local character = player.Character
+    local root = character and character:FindFirstChild(
+        "HumanoidRootPart"
+    )
+
+    if not root or not item.model.Parent then
+        return false
+    end
+
+    local part = item.model.PrimaryPart
+        or item.model:FindFirstChildWhichIsA(
+            "BasePart", true
+        )
+
+    if not part or not item.prompt.Parent then
+        return false
+    end
+
+    -- Acercamiento directo al cofre
+    pcall(function()
+        character:PivotTo(
+            part.CFrame * CFrame.new(0, 0, 4)
+        )
+    end)
+
+    task.wait(0.4)
+
+    pcall(function()
+        item.prompt:InputHoldBegin()
+        task.wait(0.15)
+        item.prompt:InputHoldEnd()
+    end)
+
+    task.wait(0.6)
+
+    if not item.model:IsDescendantOf(workspace)
+    or not item.prompt.Enabled then
+        return true
+    end
+
+    return false
+end
+
+-- Auto farm
+local function startFarm()
+    if running or closed then return end
+    running = true
+    startBtn.Text = "AUTO FARM: ON"
+
+    task.spawn(function()
+        while running and not closed do
+            status.Text = "Buscando cofres..."
+            local chests = findChests()
+
+            if #chests == 0 then
+                task.wait(1.5)
+            else
+                local item = chests[1]
+                status.Text = "Recogiendo cofre..."
+
+                if collectChest(item) then
+                    attempted[item.model] = true
+                else
+                    task.wait(1)
+                end
+            end
+
+            task.wait(0.3)
+        end
+    end)
+end
+
+startBtn.Activated:Connect(function()
+    if running then
+        running = false
+        startBtn.Text = "AUTO FARM: OFF"
+        status.Text = "Detenido"
+    else
+        startFarm()
+    end
+end)
+
+stopBtn.Activated:Connect(function()
+    running = false
+    startBtn.Text = "AUTO FARM: OFF"
+    status.Text = "Detenido"
+end)
+
+closeBtn.Activated:Connect(function()
+    running = false
+    closed = true
+    gui:Destroy()
+end)
+
+-- Arrastrar la interfaz con ratón o pantalla táctil
+local dragging = false
+local dragStart
+local startPosition
+
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPosition = window.Position
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if dragging and (
+        input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement
+    ) then
+        local delta = input.Position - dragStart
+        window.Position = UDim2.new(
+            startPosition.X.Scale,
+            startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale,
+            startPosition.Y.Offset + delta.Y
+        )
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+task.wait(1)
+startFarm()
